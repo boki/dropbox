@@ -255,6 +255,16 @@ func (db *Dropbox) SetAppInfo(clientid, clientsecret string) error {
 	return nil
 }
 
+// SetToken sets token to avoid calling Auth method.
+func (db *Dropbox) SetToken(token *oauth2.Token) {
+	db.token = token
+}
+
+// Token returns the OAuth token.
+func (db *Dropbox) Token() *oauth2.Token {
+	return db.token
+}
+
 // SetAccessToken sets access token to avoid calling Auth method.
 func (db *Dropbox) SetAccessToken(accesstoken string) {
 	db.token = &oauth2.Token{AccessToken: accesstoken}
