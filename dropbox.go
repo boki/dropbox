@@ -299,6 +299,12 @@ func (db *Dropbox) Auth() error {
 	return db.AuthCode(code)
 }
 
+// AuthCodeURL returns a URL to Dropbox's consent page that asks for permissions
+// for the required scopes explicitly.
+func (db *Dropbox) AuthCodeURL(state string) string {
+	return db.config.AuthCodeURL(state)
+}
+
 // AuthCode gets the token associated with the given code.
 func (db *Dropbox) AuthCode(code string) error {
 	t, err := db.config.Exchange(oauth2.NoContext, code)
