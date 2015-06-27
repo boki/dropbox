@@ -50,6 +50,7 @@ var ErrNotAuth = errors.New("authentication required")
 type Account struct {
 	ReferralLink string `json:"referral_link,omitempty"` // URL for referral.
 	DisplayName  string `json:"display_name,omitempty"`  // User name.
+	Email        string `json:"email,omitempty"`         // Email address. Not officially documented but included - sometimes, at least...
 	UID          int    `json:"uid,omitempty"`           // User account ID.
 	Country      string `json:"country,omitempty"`       // Country ISO code.
 	QuotaInfo    struct {
