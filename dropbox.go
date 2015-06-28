@@ -586,6 +586,61 @@ func (db *Dropbox) ThumbnailsToFile(src, dst, format, size string) (*Entry, erro
 	return entry, err
 }
 
+// Previews gets a preview for a file with one of the following extensions:
+// .doc, .docx, .docm, .ppt, .pps, .ppsx, .ppsm, .pptx, .pptm, .xls, .xlsx, .xlsm, .rtf.
+func (db *Dropbox) Previews(src, rev string) (io.ReadCloser, int64, int64, error) {
+	var response *http.Response
+	var rawurl string
+	var err error
+
+	if src[0] == '/' {
+		src = src[1:]
+	}
+	rawurl = fmt.Sprintf("%s/previews/%s/%s", db.APIContentURL, db.RootDirectory, urlEncode(src))
+	if rev != "" {
+		rawurl += "?rev=" + urlEncode(rev)
+	}
+	if response, err = db.client().Get(rawurl); err != nil {
+		return nil, 0, 0, err
+	}
+	if response.StatusCode == http.StatusOK {
+		ocl, _ := strconv.ParseInt(response.Header.Get("original-content-length"), 10, 64)
+		return response.Body, response.ContentLength, ocl, err
+	}
+	response.Body.Close()
+	switch response.StatusCode {
+	case http.StatusNotFound:
+		return nil, 0, 0, os.ErrNotExist
+	case http.StatusConflict:
+		return nil, 0, 0, newErrorf(response.StatusCode, "No preview has been generated yet or unable to generate a preview for the file '%s'.", src)
+	default:
+		return nil, 0, 0, newErrorf(response.StatusCode, "unexpected HTTP status code %d", response.StatusCode)
+	}
+}
+
+// PreviewssToFile downloads the preview file located in the src path on Dropbox to the dst file on the local disk.
+func (db *Dropbox) PreviewssToFile(src, dst, rev string) (int64, error) {
+	var input io.ReadCloser
+	var fd *os.File
+	var err error
+	var ocl int64
+
+	if fd, err = os.Create(dst); err != nil {
+		return 0, err
+	}
+	defer fd.Close()
+
+	if input, _, ocl, err = db.Previews(src, rev); err != nil {
+		os.Remove(dst)
+		return 0, err
+	}
+	defer input.Close()
+	if _, err = io.Copy(fd, input); err != nil {
+		os.Remove(dst)
+	}
+	return ocl, err
+}
+
 // Download requests the file located at src, the specific revision may be given.
 // offset is used in case the download was interrupted.
 // A io.ReadCloser and the file size is returned.
