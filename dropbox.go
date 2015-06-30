@@ -280,6 +280,12 @@ func (db *Dropbox) AccessToken() string {
 	return db.token.AccessToken
 }
 
+// DisableAccessToken disables the OAuth access token.
+func (db *Dropbox) DisableAccessToken() error {
+	var i interface{}
+	return db.doRequest("POST", "disable_access_token", nil, &i)
+}
+
 // SetRedirectURL updates the configuration with the given redirection URL.
 func (db *Dropbox) SetRedirectURL(url string) {
 	db.config.RedirectURL = url

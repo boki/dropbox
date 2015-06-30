@@ -150,6 +150,27 @@ func TestAccountInfo(t *testing.T) {
 	}
 }
 
+func TestDisableAccessToken(t *testing.T) {
+	var db *Dropbox
+
+	db = newDropbox(t)
+	http.DefaultClient = &http.Client{
+		Transport: FakeHTTP{
+			t:      t,
+			Method: "POST",
+			Host:   "api.dropbox.com",
+			Path:   "/1/disable_access_token",
+			Params: map[string]string{
+				"locale": "en",
+			},
+			ResponseData: []byte("{}"),
+		},
+	}
+	if err := db.DisableAccessToken(); err != nil {
+		t.Errorf("API error: %s", err)
+	}
+}
+
 func TestCopy(t *testing.T) {
 	var err error
 	var db *Dropbox
