@@ -524,7 +524,7 @@ func (db *Dropbox) UploadFile(src, dst string, overwrite bool, parentRev string)
 }
 
 // Thumbnails gets a thumbnail for an image.
-func (db *Dropbox) Thumbnails(src, format, size string) (io.ReadCloser, int64, *Entry, error) {
+func (db *Dropbox) Thumbnails(src, format, size string) (io.ReadCloser, int64, *Entry, http.Header, error) {
 	var response *http.Response
 	var rawurl string
 	var err error
@@ -536,7 +536,7 @@ func (db *Dropbox) Thumbnails(src, format, size string) (io.ReadCloser, int64, *
 	case "jpeg", "png":
 		break
 	default:
-		return nil, 0, nil, fmt.Errorf("unsupported format '%s' must be jpeg or png", format)
+		return nil, 0, nil, nil, fmt.Errorf("unsupported format '%s' must be jpeg or png", format)
 	}
 	switch size {
 	case "":
@@ -544,7 +544,7 @@ func (db *Dropbox) Thumbnails(src, format, size string) (io.ReadCloser, int64, *
 	case "xs", "s", "m", "l", "xl":
 		break
 	default:
-		return nil, 0, nil, fmt.Errorf("unsupported size '%s' must be xs, s, m, l or xl", size)
+		return nil, 0, nil, nil, fmt.Errorf("unsupported size '%s' must be xs, s, m, l or xl", size)
 
 	}
 	if src[0] == '/' {
@@ -552,20 +552,20 @@ func (db *Dropbox) Thumbnails(src, format, size string) (io.ReadCloser, int64, *
 	}
 	rawurl = fmt.Sprintf("%s/thumbnails/%s/%s?format=%s&size=%s", db.APIContentURL, db.RootDirectory, urlEncode(src), urlEncode(format), urlEncode(size))
 	if response, err = db.client().Get(rawurl); err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, nil, err
 	}
 	if response.StatusCode == http.StatusOK {
 		json.Unmarshal([]byte(response.Header.Get("x-dropbox-metadata")), &entry)
-		return response.Body, response.ContentLength, &entry, err
+		return response.Body, response.ContentLength, &entry, response.Header, err
 	}
 	response.Body.Close()
 	switch response.StatusCode {
 	case http.StatusNotFound:
-		return nil, 0, nil, os.ErrNotExist
+		return nil, 0, nil, nil, os.ErrNotExist
 	case http.StatusUnsupportedMediaType:
-		return nil, 0, nil, newErrorf(response.StatusCode, "the image located at '%s' cannot be converted to a thumbnail", src)
+		return nil, 0, nil, nil, newErrorf(response.StatusCode, "the image located at '%s' cannot be converted to a thumbnail", src)
 	default:
-		return nil, 0, nil, newErrorf(response.StatusCode, "unexpected HTTP status code %d", response.StatusCode)
+		return nil, 0, nil, nil, newErrorf(response.StatusCode, "unexpected HTTP status code %d", response.StatusCode)
 	}
 }
 
@@ -581,7 +581,7 @@ func (db *Dropbox) ThumbnailsToFile(src, dst, format, size string) (*Entry, erro
 	}
 	defer fd.Close()
 
-	if input, _, entry, err = db.Thumbnails(src, format, size); err != nil {
+	if input, _, entry, _, err = db.Thumbnails(src, format, size); err != nil {
 		os.Remove(dst)
 		return nil, err
 	}
@@ -594,7 +594,7 @@ func (db *Dropbox) ThumbnailsToFile(src, dst, format, size string) (*Entry, erro
 
 // Previews gets a preview for a file with one of the following extensions:
 // .doc, .docx, .docm, .ppt, .pps, .ppsx, .ppsm, .pptx, .pptm, .xls, .xlsx, .xlsm, .rtf.
-func (db *Dropbox) Previews(src, rev string) (io.ReadCloser, int64, int64, error) {
+func (db *Dropbox) Previews(src, rev string) (io.ReadCloser, int64, int64, http.Header, error) {
 	var response *http.Response
 	var rawurl string
 	var err error
@@ -607,20 +607,20 @@ func (db *Dropbox) Previews(src, rev string) (io.ReadCloser, int64, int64, error
 		rawurl += "?rev=" + urlEncode(rev)
 	}
 	if response, err = db.client().Get(rawurl); err != nil {
-		return nil, 0, 0, err
+		return nil, 0, 0, nil, err
 	}
 	if response.StatusCode == http.StatusOK {
 		ocl, _ := strconv.ParseInt(response.Header.Get("original-content-length"), 10, 64)
-		return response.Body, response.ContentLength, ocl, err
+		return response.Body, response.ContentLength, ocl, response.Header, err
 	}
 	response.Body.Close()
 	switch response.StatusCode {
 	case http.StatusNotFound:
-		return nil, 0, 0, os.ErrNotExist
+		return nil, 0, 0, nil, os.ErrNotExist
 	case http.StatusConflict:
-		return nil, 0, 0, newErrorf(response.StatusCode, "No preview has been generated yet or unable to generate a preview for the file '%s'.", src)
+		return nil, 0, 0, nil, newErrorf(response.StatusCode, "No preview has been generated yet or unable to generate a preview for the file '%s'.", src)
 	default:
-		return nil, 0, 0, newErrorf(response.StatusCode, "unexpected HTTP status code %d", response.StatusCode)
+		return nil, 0, 0, nil, newErrorf(response.StatusCode, "unexpected HTTP status code %d", response.StatusCode)
 	}
 }
 
@@ -636,7 +636,7 @@ func (db *Dropbox) PreviewssToFile(src, dst, rev string) (int64, error) {
 	}
 	defer fd.Close()
 
-	if input, _, ocl, err = db.Previews(src, rev); err != nil {
+	if input, _, ocl, _, err = db.Previews(src, rev); err != nil {
 		os.Remove(dst)
 		return 0, err
 	}
@@ -650,7 +650,7 @@ func (db *Dropbox) PreviewssToFile(src, dst, rev string) (int64, error) {
 // Download requests the file located at src, the specific revision may be given.
 // offset is used in case the download was interrupted.
 // A io.ReadCloser and the file size is returned.
-func (db *Dropbox) Download(src, rev string, offset int) (io.ReadCloser, int64, error) {
+func (db *Dropbox) Download(src, rev string, offset int) (io.ReadCloser, int64, http.Header, error) {
 	var request *http.Request
 	var response *http.Response
 	var rawurl string
@@ -665,24 +665,24 @@ func (db *Dropbox) Download(src, rev string, offset int) (io.ReadCloser, int64, 
 		rawurl += fmt.Sprintf("?rev=%s", rev)
 	}
 	if request, err = http.NewRequest("GET", rawurl, nil); err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	if offset != 0 {
 		request.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}
 
 	if response, err = db.client().Do(request); err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	if response.StatusCode == http.StatusOK || response.StatusCode == http.StatusPartialContent {
-		return response.Body, response.ContentLength, err
+		return response.Body, response.ContentLength, response.Header, err
 	}
 	response.Body.Close()
 	switch response.StatusCode {
 	case http.StatusNotFound:
-		return nil, 0, os.ErrNotExist
+		return nil, 0, nil, os.ErrNotExist
 	default:
-		return nil, 0, newErrorf(response.StatusCode, "unexpected HTTP status code %d", response.StatusCode)
+		return nil, 0, nil, newErrorf(response.StatusCode, "unexpected HTTP status code %d", response.StatusCode)
 	}
 }
 
@@ -703,7 +703,7 @@ func (db *Dropbox) DownloadToFileResume(src, dst, rev string) error {
 	}
 	offset = int(fi.Size())
 
-	if input, _, err = db.Download(src, rev, offset); err != nil {
+	if input, _, _, err = db.Download(src, rev, offset); err != nil {
 		return err
 	}
 	defer input.Close()
@@ -723,7 +723,7 @@ func (db *Dropbox) DownloadToFile(src, dst, rev string) error {
 	}
 	defer fd.Close()
 
-	if input, _, err = db.Download(src, rev, 0); err != nil {
+	if input, _, _, err = db.Download(src, rev, 0); err != nil {
 		os.Remove(dst)
 		return err
 	}
